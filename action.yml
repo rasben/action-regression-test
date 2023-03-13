@@ -5,6 +5,10 @@ branding:
   color: 'purple'
 
 inputs:
+  GITHUB_TOKEN:
+    description: ""
+    required: true
+
   URLS_FILE:
     description: ""
     required: true
@@ -30,30 +34,45 @@ runs:
         cache: 'npm'
         cache-dependency-path: ./package-lock.json
 
-    - uses: actions/download-artifact@v3
+    - name: Download artifact
+      id: download-artifact
+      uses: dawidd6/action-download-artifact@v2
       with:
+        name: regressionartifacts
         path: ${{ inputs.ARTIFACTS_PATH }}
 
     - name: hello
       shell: bash
       run: |
         set +e
+        
+        tree -L 3 artifacts
+
         npm install -g odiff-bin capture-website-cli
 
+        cat "${{ inputs.URLS_FILE }}"
+
         while read URL; do
-          FILE_NAME = "$(echo "$URL" | sed -e 's/[^A-Za-z0-9._-]//g').png"
-        
-          capture-website "$URL" --output "$FILE_NAME"
-          ARTIFACT_FILE_NAME = "${{ inputs.ARTIFACTS_PATH }}/$FILE_NAME"
+          FILE_NAME="$(echo "$URL" | sed -e 's/[^A-Za-z0-9._-]//g').png"
+          echo "URL: $URL"
+          echo "FILE_NAME: $FILE_NAME"
+          mkdir -p "${{ inputs.ARTIFACTS_PATH }}/DIFFS"
+          capture-website "$URL" --output "$FILE_NAME" --full-page
+          ARTIFACT_FILE_NAME="${{ inputs.ARTIFACTS_PATH }}/$FILE_NAME"
 
           if [ ! -f "$ARTIFACT_FILE_NAME" ]; then
+            echo "Could not find $ARTIFACT_FILE_NAME"
             mv "$FILE_NAME" "$ARTIFACT_FILE_NAME"
           else
-            odiff "$FILE_NAME" "$ARTIFACT_FILE_NAME" "./DIFF--$FILE_NAME"
+            echo "Checking diff of $ARTIFACT_FILE_NAME"
+            odiff "$FILE_NAME" "$ARTIFACT_FILE_NAME" "${{ inputs.ARTIFACTS_PATH }}/DIFFS/$FILE_NAME"
+            echo $?
           fi
         done < "${{ inputs.URLS_FILE }}"
+        
+        tree -L 5 "${{ inputs.ARTIFACTS_PATH }}"
 
     - uses: actions/upload-artifact@v3
       with:
-        name: regression-artifacts
+        name: regressionartifacts
         path: ${{ inputs.ARTIFACTS_PATH }}
